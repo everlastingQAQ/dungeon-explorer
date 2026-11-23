@@ -108,7 +108,9 @@ public class GameRenderer {
                 );
                 // Pause controls use screen coordinates, after the viewport and
                 // projection have switched from the world camera to the UI.
-                if (engine.state() == byow.game.GameState.PAUSE) pauseRenderer.render();
+                if (engine.state() == byow.game.GameState.PAUSE) {
+                    pauseRenderer.render(engine.uiMessage());
+                }
             }
 
             case MENU -> {
@@ -119,17 +121,17 @@ public class GameRenderer {
             case SEED -> {
                 useFullViewport();
                 useUiCamera();
-                seedRenderer.render(engine.seedString());
+                seedRenderer.render(engine.seedString(), engine.uiMessage());
             }
             case SAVE -> {
                 useFullViewport();
                 useUiCamera();
-                saveRenderer.render();
+                saveRenderer.render(engine);
             }
             case LOAD -> {
                 useFullViewport();
                 useUiCamera();
-                loadRenderer.render();
+                loadRenderer.render(engine);
             }
             case CONFIRM_QUIT -> {
                 useFullViewport();

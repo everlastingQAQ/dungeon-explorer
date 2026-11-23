@@ -15,14 +15,21 @@ public class PauseRenderer {
         this.batch = batch;
         this.font = fonts.body();
     }
-    public void render() {
+    public void render(String message) {
         float y = Gdx.graphics.getHeight() - byow.game.GameConfig.HUD_HEIGHT - 18;
         String text = "游戏暂停 · 继续 (P)   保存 (S)   返回主菜单 (Q)";
         batch.begin();
+        drawWithShadow(text, y);
+        if (!message.isEmpty()) {
+            drawWithShadow(message, y - 28);
+        }
+        batch.end();
+    }
+
+    private void drawWithShadow(String text, float y) {
         font.setColor(Color.BLACK);
         drawCentered(batch, font, text, y - 2);
         font.setColor(Color.WHITE);
         drawCentered(batch, font, text, y);
-        batch.end();
     }
 }

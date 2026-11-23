@@ -26,6 +26,12 @@ public final class EngineFixture {
         e.updateVision();
         return e;
     }
+    /** Fixtures without remaining relics must save an unlocked exit. */
+    public static void unlockExit(Engine engine) {
+        set(engine, "collectedCount", GameConfig.ITEM_NUMBER);
+        engine.exit().activate(engine.world());
+    }
+
     @SuppressWarnings("unchecked")
     public static <T> List<T> list(Engine e, String name) {
         try { var f = Engine.class.getDeclaredField(name); f.setAccessible(true); return (List<T>) f.get(e); }

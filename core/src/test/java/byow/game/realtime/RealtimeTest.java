@@ -342,7 +342,9 @@ class RealtimeTest {
         String previous = System.getProperty("user.dir");
         try {
             System.setProperty("user.dir", directory.toString());
-            Engine e = open(); var m = add(e, 1, 20, 20, MonsterType.HUNTER);
+            Engine e = open();
+            unlockExit(e);
+            var m = add(e, 1, 20, 20, MonsterType.HUNTER);
             m.activity.restTicks = 40;
             e.pressDirection('D'); ticks(e, 4); keys(e, "PS1Q");
             Engine restored = new Engine(); keys(restored, "L1P"); ticks(restored, 50);
@@ -374,16 +376,18 @@ class RealtimeTest {
             System.setProperty("user.dir", directory.toString());
             for (int scenario = 0; scenario < 5; scenario++) {
                 Engine original = open();
+                unlockExit(original);
                 var m = add(original, 1, scenario == 1 ? 31 : 20, 20, MonsterType.HUNTER);
                 if (scenario == 0) { original.pressDirection('D'); ticks(original, 7); original.releaseDirection('D'); }
                 if (scenario == 1) { original.pressDirection('D'); original.releaseDirection('D'); ticks(original, 7); }
                 if (scenario == 2) { m.activity.walked = Timing.pace(m.type()).stepsBeforeRest() - 1; ticks(original, 12); }
                 if (scenario == 3) { m.activity.walked = Timing.pace(m.type()).stepsBeforeRest(); m.activity.restTicks = 30; }
                 if (scenario == 4) { set(original, "freezeTicks", 80); m.activity.restTicks = 20; }
-                keys(original, "PS1");
-                Path path = directory.resolve("save/slot1/save.json");
+                int slot = scenario + 1;
+                keys(original, "PS" + slot);
+                Path path = directory.resolve("save/slot" + slot + "/save.json");
                 String saved = Files.readString(path);
-                Engine restored = new Engine(); keys(restored, "L1");
+                Engine restored = new Engine(); keys(restored, "L" + slot);
                 assertEquals(GameState.PAUSE, restored.state());
                 restored.update(1000);
                 assertEquals(saved, Files.readString(path));
@@ -405,7 +409,9 @@ class RealtimeTest {
         String previous = System.getProperty("user.dir");
         try {
             System.setProperty("user.dir", directory.toString());
-            Engine original = open(); keys(original, "PS1");
+            Engine original = open();
+            unlockExit(original);
+            keys(original, "PS1");
             Path path = directory.resolve("save/slot1/save.json");
             var json = com.google.gson.JsonParser.parseString(Files.readString(path)).getAsJsonObject();
             json.addProperty("frozenMonsterTurns", 2);
@@ -413,6 +419,7 @@ class RealtimeTest {
             Engine modern = new Engine(); keys(modern, "L1");
             assertEquals(0, modern.freezeTicks());
             json.remove("realtime"); json.remove("version");
+            json.addProperty("formatVersion", 1);
             String legacy = json.toString(); Files.writeString(path, legacy);
             Engine old = new Engine(); keys(old, "L1");
             assertEquals(120, old.freezeTicks()); assertEquals(GameState.PAUSE, old.state());

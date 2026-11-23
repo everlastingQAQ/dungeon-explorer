@@ -24,6 +24,7 @@ class PauseNavigationTest {
         try {
             System.setProperty("user.dir", directory.toString());
             Engine e = open();
+            unlockExit(e);
             GameInputProcessor input = new GameInputProcessor(e);
             input.keyDown(Input.Keys.D);
             ticks(e, 7);
@@ -78,7 +79,9 @@ class PauseNavigationTest {
         String previous = System.getProperty("user.dir");
         try {
             System.setProperty("user.dir", directory.toString());
-            Engine e = open(); set(e, "hasUnsavedChanges", true);
+            Engine e = open();
+            unlockExit(e);
+            set(e, "hasUnsavedChanges", true);
             GameInputProcessor input = new GameInputProcessor(e);
             key(input, Input.Keys.P); key(input, Input.Keys.Q); key(input, Input.Keys.Y);
             assertEquals(GameState.SAVE, e.state());

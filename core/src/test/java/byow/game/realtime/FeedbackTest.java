@@ -116,7 +116,9 @@ class FeedbackTest {
         String previous = System.getProperty("user.dir");
         try {
             System.setProperty("user.dir", directory.toString());
-            Engine e = open(); adjacent(e, 1, 31); ticks(e, 1);
+            Engine e = open();
+            unlockExit(e);
+            adjacent(e, 1, 31); ticks(e, 1);
             e.feedback().notice(GameFeedback.Channel.PICKUP, "拾取水晶");
             keys(e, "PS1");
             String json = Files.readString(directory.resolve("save/slot1/save.json"));

@@ -113,7 +113,7 @@ public class DoorLayoutTest {
             var engine = EngineFixture.create(world, new Player(world, 4, 3), List.of());
             EngineFixture.set(engine, "roomDesigns", rooms());
             EngineFixture.set(engine, "exit", new GameExit(9, 10, false, 2));
-            engine.exit().syncTile(world);
+            EngineFixture.unlockExit(engine);
             EngineFixture.keys(engine, "PS1");
             Path path = directory.resolve("save/slot1/save.json");
             String saved = Files.readString(path);

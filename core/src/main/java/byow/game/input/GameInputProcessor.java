@@ -15,6 +15,10 @@ public class GameInputProcessor extends InputAdapter {
 
     @Override public boolean keyDown(int code) {
         if (!down.add(code)) return true;
+        if (code == Input.Keys.BACKSPACE && engine.state() == GameState.SEED) {
+            engine.handleKey('\b');
+            return true;
+        }
         String name = Input.Keys.toString(code);
         if (name.length() != 1) return false;
         char key = Character.toUpperCase(name.charAt(0));
