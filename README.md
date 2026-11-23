@@ -9,8 +9,8 @@ BYOW 是一款用 Java 21 和 libGDX 开发的桌面实时地牢探索游戏，�
 安装 JDK 21，并让终端使用该 JDK。项目自带 Gradle Wrapper，首次运行会下载 Gradle 和依赖。
 
 ```bash
-git clone https://github.com/everlastingQAQ/byow-dungeon-explorer.git
-cd byow-dungeon-explorer
+git clone https://github.com/everlastingQAQ/dungeon-explorer.git
+cd dungeon-explorer
 ```
 
 Windows PowerShell
