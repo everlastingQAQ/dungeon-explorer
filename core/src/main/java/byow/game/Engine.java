@@ -1,8 +1,9 @@
 package byow.game;
 
 import byow.game.monster.MonsterController;
+import byow.game.feedback.GameFeedback;
 import byow.game.monster.MonsterSpawner;
-import byow.game.monster.MonsterTurnResult;
+import byow.game.realtime.*;
 import byow.game.item.BuffType;
 import byow.game.item.Item;
 import byow.game.item.ItemRules;
@@ -18,6 +19,7 @@ import byow.game.save.*;
 import byow.game.tile.TETile;
 import byow.game.visioncauculate.Visioncauculate;
 import byow.game.worldGenerator.WorldGenerator;
+import byow.game.worldGenerator.RoomDesign;
 
 import java.util.*;
 
@@ -28,15 +30,14 @@ import static byow.game.GameConfig.DEFAULT_VISION_RADIUS;
 import static byow.game.GameConfig.REQUIRED_ITEM_COUNT;
 import static byow.game.item.ItemRules.HEAL_AMOUNT;
 import static byow.game.item.ItemRules.SHIELD_CHARGES;
-import static byow.game.item.ItemRules.STUN_TURNS;
 import static byow.game.item.ItemRules.VISION_RADIUS_BONUS;
 import static byow.game.tile.TileConverter.toTETile;
 import static byow.game.tile.TileConverter.toTileType;
 
 public class Engine {
 
-    /** 首次发现怪物的提示保留多少个有效玩家回合。 */
-    private static final int MONSTER_NOTICE_TURNS = 3;
+    /** 首次发现怪物提示持续的游戏 tick 数。 */
+    private static final int MONSTER_NOTICE_TICKS = 180;
 
     // =====================
     // Fields
@@ -44,6 +45,9 @@ public class Engine {
 
     /** 当前游戏世界。 */
     private TETile[][] world = null;
+    private List<RoomDesign> roomDesigns = List.of();
+
+    public List<RoomDesign> roomDesigns() { return roomDesigns; }
 
     /** 当前游戏玩家。 */
     private Player player;
@@ -72,8 +76,15 @@ public class Engine {
     /** 当前玩家视野范围。 */
     private int visionRadius;
 
-    /** 全部怪物还需要跳过的行动回合数。 */
-    private int frozenMonsterTurns;
+    /** Input and real-time counters; never advanced by menu input. */
+    private final MovementInput movementInput = new MovementInput();
+    private double accumulator;
+    private int freezeTicks;
+    private int protectionTicks;
+    private final GameFeedback feedback = new GameFeedback();
+    public GameFeedback feedback() { return feedback; }
+    private boolean frozenThisTick;
+    private char travelDirection;
 
     /** Radar Buff 是否已经激活。 */
     private boolean radarActive;
@@ -85,8 +96,8 @@ public class Engine {
     /** 当前正在左下角显示的首次怪物类型。 */
     private MonsterType monsterNoticeType;
 
-    /** 当前首次怪物提示还会保留的有效回合数。 */
-    private int monsterNoticeTurns;
+    /** 当前首次怪物提示剩余的逻辑 tick。 */
+    private int monsterNoticeTicks;
 
     /** 用于暂存用户输入的新世界随机种子。 */
     private final StringBuilder seedString = new StringBuilder();
@@ -119,6 +130,148 @@ public class Engine {
     private boolean[][] explored;
 
 
+    public void pressDirection(char key) {
+        if (state == GameState.PLAYING) movementInput.press(Character.toUpperCase(key));
+    }
+    public void releaseDirection(char key) { movementInput.release(Character.toUpperCase(key)); }
+    public void focusLost() {
+        movementInput.clear();
+        accumulator = 0;
+        if (state == GameState.PLAYING) state = GameState.PAUSE;
+    }
+    public int freezeTicks() { return freezeTicks; }
+    public int protectionTicks() { return protectionTicks; }
+
+    /** No wall clock, and never catch up more than six ticks after a stalled frame. */
+    public void update(double deltaSeconds) {
+        if (state != GameState.PLAYING) { accumulator = 0; movementInput.clear(); return; }
+        if (!Double.isFinite(deltaSeconds) || deltaSeconds <= 0) return;
+        accumulator += Math.min(.1, deltaSeconds);
+        int count = 0;
+        while (accumulator + 1e-10 >= 1.0 / Timing.HZ && count++ < 6 && state == GameState.PLAYING) {
+            accumulator -= 1.0 / Timing.HZ;
+            tick();
+        }
+        if (state != GameState.PLAYING) { movementInput.clear(); accumulator = 0; }
+        float alpha = (float) Math.max(0, accumulator * Timing.HZ);
+        player.renderAlpha = alpha;
+        for (Monster m : monsters) m.renderAlpha = alpha;
+    }
+
+    private void tick() {
+        feedback.tick();
+        boolean frozen = freezeTicks > 0;
+        frozenThisTick = frozen;
+        boolean changed = false;
+        if (freezeTicks > 0) { freezeTicks--; changed = true; }
+        if (protectionTicks > 0) { protectionTicks--; changed = true; }
+        Set<Long> excluded = new HashSet<>();
+        // Timer advancement precedes arrivals: a newly started rest gets its full duration.
+        for (Monster m : monsters) {
+            var a = m.activity;
+            if (!frozen) {
+                if (a.attackTicks > 0) { a.attackTicks--; changed = true; }
+                if (a.waitTicks > 0) { a.waitTicks--; changed = true; }
+                if (a.restTicks > 0) {
+                    changed = true;
+                    if (--a.restTicks == 0) { a.walked = 0; m.clearCommittedTarget(); }
+                }
+            }
+        }
+        for (Monster m : monsters) {
+            var a = m.activity;
+            if (a.motion == null) continue;
+            changed = true;
+            a.motion = a.motion.advance();
+            if (a.motion.complete()) {
+                Motion completed = a.motion;
+                m.moveTo(completed.toX(), completed.toY());
+                a.motion = null;
+                if (completed.swap()) excluded.add(m.id());
+                else if (++a.walked >= Timing.pace(m.type()).stepsBeforeRest())
+                    a.restTicks = Timing.pace(m.type()).rest();
+            }
+        }
+        boolean arrived = false;
+        if (player.motion != null) {
+            changed = true;
+            player.motion = player.motion.advance();
+            if (player.motion.complete()) {
+                player.arrive(player.motion);
+                arrived = true;
+                resolvePlayerInteractions();
+            }
+        }
+        hasUnsavedChanges |= changed;
+        if (state != GameState.PLAYING) return;
+        if (arrived) updateVision();
+        if (player.motion == null) {
+            Character pending = movementInput.consumePending();
+            Character direction = pending != null ? pending : movementInput.preferred();
+            if (direction != null && !startPlayerMove(direction, excluded)
+                && state == GameState.PLAYING
+                && movementInput.held(travelDirection) && direction != travelDirection)
+                startPlayerMove(travelDirection, excluded);
+        }
+        if (state != GameState.PLAYING) return;
+        // A freeze picked up on this arrival also prevents decisions immediately.
+        if (!frozen && freezeTicks == 0) {
+            for (var decision : monsterController.decisions(world, monsters, player, excluded)) {
+                Monster m = decision.monster();
+                var a = m.activity;
+                var next = decision.destination();
+                int duration = Timing.pace(m.type()).step();
+                a.waitTicks = duration; // Failed attempts do not busy-loop AI every tick.
+                hasUnsavedChanges = true;
+                if (next == null) continue;
+                if (next.x() == player.x() && next.y() == player.y()) {
+                    resolveContact(m);
+                    if (state != GameState.PLAYING) return;
+                } else if (walkable(next.x(), next.y()) && !occupiedOrReserved(next.x(), next.y())) {
+                    a.waitTicks = 0; // Animation itself is the movement interval.
+                    a.motion = new Motion(m.x(), m.y(), next.x(), next.y(), duration, 0, false);
+                }
+            }
+        }
+        updateHudContext();
+    }
+
+    private boolean walkable(int x, int y) {
+        return x > 0 && y > 0 && x < world.length - 1 && y < world[0].length - 1
+            && byow.game.tile.TileRules.isWalkable(world[x][y]);
+    }
+
+    public boolean occupiedOrReserved(int x, int y) {
+        if (player.x() == x && player.y() == y
+            || player.motion != null && player.motion.targets(x, y)) return true;
+        for (Monster m : monsters)
+            if (m.x() == x && m.y() == y || m.activity.motion != null && m.activity.motion.targets(x, y))
+                return true;
+        return false;
+    }
+
+    private boolean startPlayerMove(char direction, Set<Long> excluded) {
+        int dx = direction == 'D' ? 1 : direction == 'A' ? -1 : 0;
+        int dy = direction == 'W' ? 1 : direction == 'S' ? -1 : 0;
+        int x = player.x() + dx, y = player.y() + dy;
+        if (!walkable(x, y)) return false;
+        Monster target = monsterAt(x, y);
+        if (target != null) {
+            if (target.activity.motion != null) return false;
+            for (Monster m : monsters)
+                if (m.activity.motion != null && m.activity.motion.targets(x, y)) return false;
+            resolveContact(target);
+            if (state != GameState.PLAYING) return false;
+            target.activity.motion = new Motion(x, y, player.x(), player.y(), Timing.PLAYER_STEP, 0, true);
+            excluded.add(target.id());
+        } else if (occupiedOrReserved(x, y)) return false;
+        player.motion = new Motion(player.x(), player.y(), x, y, Timing.PLAYER_STEP, 0, target != null);
+        travelDirection = direction;
+        hasUnsavedChanges = true;
+        return true;
+    }
+
+
     // =====================
     // Public input entry
     // =====================
@@ -133,7 +286,7 @@ public class Engine {
         switch (state) {
             case MENU -> handleMenuInput(c);
             case SEED -> handleSeedInput(c);
-            case PLAYING -> handlePlayingInput(c);
+            case PLAYING -> { if (c == 'P') focusLost(); }
             case LOAD -> handleLoadInput(c);
             case PAUSE -> handlePauseInput(c);
             case SAVE -> handleSaveInput(c);
@@ -207,7 +360,9 @@ public class Engine {
             return; // TODO：保持 LOAD 状态，之后显示“该位置没有存档”
         }
         loadGame(slot);
-        state = GameState.PLAYING;
+        movementInput.clear();
+        accumulator = 0;
+        state = GameState.PAUSE;
     }
 
     /**
@@ -270,82 +425,16 @@ public class Engine {
                 seedString.setLength(0);
                 state = GameState.SEED;
             }
-            case 'M', 'Q' -> state = GameState.MENU;
+            case 'Q' -> state = GameState.MENU;
         }
     }
 
     /**
      * 处理游戏进行状态下的输入。
-     * 后续将在这里处理玩家移动、保存游戏等操作。
+     * 移动由独立按键状态与固定 tick 更新驱动。
      *
      * @param c 用户输入的字符
      */
-    private void handlePlayingInput(char c) {
-        int dx = switch (c) {
-            case 'A' -> -1;
-            case 'D' -> 1;
-            default -> 0;
-        };
-        int dy = switch (c) {
-            case 'S' -> -1;
-            case 'W' -> 1;
-            default -> 0;
-        };
-
-        if (dx != 0 || dy != 0) {
-            Monster collided = monsterAt(player.x() + dx, player.y() + dy);
-            if (collided != null) {
-                // 接触伤害本身已经改变进度，即使玩家没有成功换位也需重存。
-                hasUnsavedChanges = true;
-                // 主动撞怪会受到一次接触伤害。存活时双方交换位置，避免
-                // 怪物永久堵死单格走廊，也保证任意时刻不会坐标重叠。
-                resolveContact(collided);
-                if (state == GameState.PLAYING) {
-                    int previousX = player.x();
-                    int previousY = player.y();
-                    movePlayer(c);
-                    collided.moveTo(previousX, previousY);
-                    resolvePlayerInteractions();
-                }
-                if (state == GameState.PLAYING) {
-                    resolveMonsterInteractions(Set.of(collided.id()));
-                    updateVision();
-                    updateHudContext();
-                }
-                return;
-            }
-        }
-
-        boolean moved = movePlayer(c);
-
-        if (moved) {
-            hasUnsavedChanges = true;
-            resolvePlayerInteractions();
-            if (state == GameState.PLAYING) {
-                resolveMonsterInteractions(Set.of());
-            }
-            updateVision();
-            if (state == GameState.PLAYING) {
-                updateHudContext();
-            }
-        }
-    }
-
-    /** 执行不包含动态占位判断的基础玩家移动或暂停输入。 */
-    private boolean movePlayer(char c) {
-        return switch (c) {
-            case 'W' -> player.moveUp(world);
-            case 'A' -> player.moveLeft(world);
-            case 'S' -> player.moveDown(world);
-            case 'D' -> player.moveRight(world);
-            case 'P' -> {
-                state = GameState.PAUSE;
-                yield false;
-            }
-            default -> false;
-        };
-    }
-
     private Monster monsterAt(int x, int y) {
         for (Monster monster : monsters) {
             if (monster.x() == x && monster.y() == y) {
@@ -381,6 +470,7 @@ public class Engine {
         switch (object.type()) {
             case SPIKE_TRAP -> {
                 player.takeDamage(1);
+                feedback.impact(GameFeedback.Impact.DAMAGE, "尖刺 -1 生命");
                 if (!player.isAlive()) {
                     state = GameState.GAME_OVER;
                 }
@@ -388,17 +478,19 @@ public class Engine {
             case HEALING_FOUNTAIN -> {
                 if (player.currentHp() < player.maxHp()) {
                     player.heal(1);
+                    feedback.impact(GameFeedback.Impact.HEAL, "+1 生命");
                     object.consume();
                 }
             }
             case PORTAL -> {
-                if (monsterAt(object.targetX(), object.targetY()) == null) {
+                if (!occupiedOrReserved(object.targetX(), object.targetY())) {
                     player.teleportTo(world, object.targetX(), object.targetY());
                 }
             }
             case BLESSING_CHEST -> {
                 BuffType[] buffs = BuffType.values();
-                applyBuff(buffs[random.nextInt(buffs.length)]);
+                String effect = applyBuff(buffs[random.nextInt(buffs.length)]);
+                feedback.notice(GameFeedback.Channel.EFFECT, "祝福宝箱：" + effect);
                 object.consume();
             }
         }
@@ -439,17 +531,19 @@ public class Engine {
         items.remove(item);
         collectedCount++;
 
-        if (collectedCount >= REQUIRED_ITEM_COUNT) {
+        if (collectedCount >= REQUIRED_ITEM_COUNT && !exit.active()) {
             exit.activate(world);
+            feedback.notice(GameFeedback.Channel.EXIT, "出口已开启！找到出口，进入即可获胜。");
         }
 
         // 每种遗物都会激活一只固定类型的怪物。
         spawnMonster(rule.monsterType(), item.x(), item.y());
 
         // 只有第 4 和第 5 个遗物会额外给予 Buff。
-        if (ItemRules.shouldGrantBuff(collectedCount)) {
-            applyBuff(rule.buffType());
-        }
+        String effect = ItemRules.shouldGrantBuff(collectedCount) ? "；" + applyBuff(rule.buffType()) : "";
+        feedback.notice(GameFeedback.Channel.PICKUP,
+            "拾取" + item.type().displayName() + " · 遗物 " + collectedCount + "/" + REQUIRED_ITEM_COUNT
+                + "\n激活" + rule.monsterType().displayName() + effect + "。");
     }
 
     /**
@@ -471,58 +565,45 @@ public class Engine {
             monster.setHome(itemX, itemY);
         }
 
+        monster.activity.waitTicks = Timing.SPAWN_DELAY + (int) Math.floorMod(monster.id(), 4) * 3;
         monsters.add(monster);
         nextMonsterId++;
     }
 
     /** 应用不依赖出口系统的遗物 Buff。 */
-    private void applyBuff(BuffType type) {
+    private String applyBuff(BuffType type) {
+        int hpBefore = player.currentHp();
         switch (type) {
             case VISION -> visionRadius += VISION_RADIUS_BONUS;
             case HEAL -> player.heal(HEAL_AMOUNT);
             case SHIELD -> player.grantShield(SHIELD_CHARGES);
-            case STUN -> frozenMonsterTurns = STUN_TURNS;
+            case STUN -> freezeTicks = Math.max(freezeTicks, Timing.FREEZE);
             case RADAR -> radarActive = true;
         }
+        return switch (type) {
+            case VISION -> "视野 +" + VISION_RADIUS_BONUS;
+            case HEAL -> player.currentHp() == hpBefore ? "生命已满" : "恢复 " + (player.currentHp() - hpBefore) + " 点生命";
+            case SHIELD -> "护盾 +" + SHIELD_CHARGES;
+            case STUN -> "怪物冻结 2 秒";
+            case RADAR -> "出口雷达已开启";
+        };
     }
 
-    // 处理怪物交互
-    private void resolveMonsterInteractions(Set<Long> contactsAlreadyResolved) {
-        // Stun 直接跳过整个怪物回合，不覆盖每只怪物原有的行为状态。
-        if (frozenMonsterTurns > 0) {
-            frozenMonsterTurns--;
-            return;
-        }
-
-        MonsterTurnResult result = monsterController.takeTurn(world, monsters, player);
-        resolveMonsterContacts(result.contacts(), contactsAlreadyResolved);
-    }
-
-    /** 结算本回合尝试进入玩家位置的怪物。 */
-    private void resolveMonsterContacts(
-        List<Monster> contacts,
-        Set<Long> contactsAlreadyResolved
-    ) {
-        // 接触事件已经按怪物稳定 ID 排序，依次结算每一次攻击。
-        for (Monster monster : contacts) {
-            if (contactsAlreadyResolved.contains(monster.id())) {
-                continue;
-            }
-            resolveContact(monster);
-            if (state == GameState.GAME_OVER) {
-                break;
-            }
-        }
-    }
-
-    /** 结算一次怪物接触；护盾优先抵消伤害。 */
-    private void resolveContact(Monster ignored) {
-        if (!player.consumeShield()) {
+    /** Attack attempts consume only the attacker's cooldown; protection is global. */
+    private void resolveContact(Monster monster) {
+        var a = monster.activity;
+        if (freezeTicks > 0 || frozenThisTick || a.restTicks > 0 || a.motion != null && a.motion.swap() || a.attackTicks > 0) return;
+        a.attackTicks = Timing.CONTACT_COOLDOWN;
+        hasUnsavedChanges = true;
+        if (protectionTicks > 0) return;
+        if (player.consumeShield()) {
+            feedback.impact(GameFeedback.Impact.SHIELD, "护盾抵挡");
+        } else {
             player.takeDamage(MONSTER_CONTACT_DAMAGE);
+            feedback.impact(GameFeedback.Impact.DAMAGE, "-" + MONSTER_CONTACT_DAMAGE + " 生命");
         }
-        if (!player.isAlive()) {
-            state = GameState.GAME_OVER;
-        }
+        protectionTicks = Timing.CONTACT_PROTECTION;
+        if (!player.isAlive()) state = GameState.GAME_OVER;
     }
 
     // =====================
@@ -548,9 +629,9 @@ public class Engine {
      * 介绍过的怪物。遗物靠近提示由渲染时动态查询，不需要保存计时。
      */
     private void updateHudContext() {
-        if (monsterNoticeTurns > 0) {
-            monsterNoticeTurns--;
-            if (monsterNoticeTurns > 0) {
+        if (monsterNoticeTicks > 0) {
+            monsterNoticeTicks--;
+            if (monsterNoticeTicks > 0) {
                 return;
             }
             monsterNoticeType = null;
@@ -561,7 +642,7 @@ public class Engine {
                 && !seenMonsterTypes.contains(monster.type())) {
                 seenMonsterTypes.add(monster.type());
                 monsterNoticeType = monster.type();
-                monsterNoticeTurns = MONSTER_NOTICE_TURNS;
+                monsterNoticeTicks = MONSTER_NOTICE_TICKS;
                 return;
             }
         }
@@ -582,11 +663,14 @@ public class Engine {
             return;
         }
 
+        feedback.clear();
         // 创建随机数
         random = new GameRandom(seed);
 
         // 创建世界
-        world = WorldGenerator.generate(seed);
+        var generated = WorldGenerator.generateDesigned(seed);
+        world = generated.terrain();
+        roomDesigns = generated.rooms();
 
         // 创建人物
         player = new Player(world, random);
@@ -595,7 +679,7 @@ public class Engine {
         exit = GameExit.place(world, player);
 
         // 创建物品
-        items = ItemGenerator.generate(world, player, random);
+        items = ItemGenerator.generate(world, player, random, roomDesigns);
 
         // 独立随机流避免新增场景物件改变遗物和怪物的既有随机序列。
         sceneObjects.clear();
@@ -604,17 +688,22 @@ public class Engine {
             player,
             items,
             exit,
-            new GameRandom(seed ^ 0x5CE0B1EC7L)
+            new GameRandom(seed ^ 0x5CE0B1EC7L),
+            roomDesigns
         ));
 
         // 新游戏开始时没有怪物，拾取遗物后再逐个激活。
         monsters.clear();
         nextMonsterId = 1;
-        frozenMonsterTurns = 0;
+        frozenThisTick = false;
+        freezeTicks = 0;
+        protectionTicks = 0;
+        accumulator = 0;
+        movementInput.clear();
         radarActive = false;
         seenMonsterTypes.clear();
         monsterNoticeType = null;
-        monsterNoticeTurns = 0;
+        monsterNoticeTicks = 0;
 
         // 初始化物品数量
         collectedCount = 0;
@@ -666,12 +755,15 @@ public class Engine {
     private void loadGame(int slot) {
         // 加载 gamesave
         GameSave gamesave = saveManager.load(slot);
+        feedback.clear();
 
         // 加载随机数
         this.random = new GameRandom(gamesave.randomState());
 
         // 加载世界
-        this.world = toTETile(gamesave.worldData().world());
+        var cleanedWorld = RoomLayoutMigration.toRgs(gamesave.worldData());
+        this.world = toTETile(cleanedWorld.world());
+        this.roomDesigns = cleanedWorld.rooms();
 
         // 加载人物
         PlayerData playerData = gamesave.playerData();
@@ -713,14 +805,25 @@ public class Engine {
         nextMonsterId = Math.max(gamesave.nextMonsterId(), minimumNextId);
 
         // 恢复由 Engine 管理的 Buff 状态；旧存档缺少字段时使用 0 和 false。
-        frozenMonsterTurns = Math.max(0, gamesave.frozenMonsterTurns());
+        freezeTicks = Math.max(0, gamesave.frozenMonsterTurns()) * Timing.HZ;
+        protectionTicks = 0;
+        if (gamesave.realtime() != null) {
+            RealtimeData data = gamesave.realtime();
+            freezeTicks = Math.max(0, data.freezeTicks());
+            protectionTicks = Math.max(0, data.protectionTicks());
+            player.motion = data.playerMotion();
+            if (data.monsters() != null) for (Monster m : monsters) {
+                var saved = data.monsters().get(m.id());
+                if (saved != null) m.activity = saved;
+            }
+        }
         radarActive = gamesave.radarActive();
         seenMonsterTypes.clear();
         if (gamesave.seenMonsterTypes() != null) {
             seenMonsterTypes.addAll(gamesave.seenMonsterTypes());
         }
         monsterNoticeType = null;
-        monsterNoticeTurns = 0;
+        monsterNoticeTicks = 0;
 
         // 加载物品栏
         for (ItemData data : gamesave.items()) {
@@ -769,7 +872,6 @@ public class Engine {
         // 加载玩家可视范围
         this.visible = new boolean[world.length][world[0].length];
         updateVision();
-        updateHudContext();
 
         // 刚加载的状态与磁盘存档一致，退出时无需再次确认。
         hasUnsavedChanges = false;
@@ -803,7 +905,7 @@ public class Engine {
         }
 
         GameSave gameSave = new GameSave(
-            new WorldData(toTileType(world)),
+            new WorldData(toTileType(world), roomDesigns),
             new PlayerData(
                 player.x(),
                 player.y(),
@@ -819,11 +921,15 @@ public class Engine {
             visionRadius,
             random.state(),
             nextMonsterId,
-            frozenMonsterTurns,
+            0,
             radarActive,
             new ArrayList<>(seenMonsterTypes),
             ExitData.from(exit),
-            sceneObjectDataList
+            sceneObjectDataList,
+            2,
+            new RealtimeData(player.motion, monsters.stream().collect(
+                java.util.stream.Collectors.toMap(Monster::id, m -> m.activity)),
+                protectionTicks, freezeTicks)
             );
         saveManager.save(slot, gameSave);
         hasUnsavedChanges = false;
@@ -873,9 +979,6 @@ public class Engine {
         return visionRadius;
     }
 
-    public int frozenMonsterTurns() {
-        return frozenMonsterTurns;
-    }
 
     public boolean radarActive() {
         return radarActive;

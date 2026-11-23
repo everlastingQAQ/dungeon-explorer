@@ -12,7 +12,12 @@ public class Lwjgl3Launcher {
     }
 
     private static Lwjgl3Application createApplication() {
-        return new Lwjgl3Application(new ByowGame(), getDefaultConfiguration());
+        ByowGame game = new ByowGame();
+        var config = getDefaultConfiguration();
+        config.setWindowListener(new com.badlogic.gdx.backends.lwjgl3.Lwjgl3WindowAdapter() {
+            @Override public void focusLost() { game.focusLost(); }
+        });
+        return new Lwjgl3Application(game, config);
     }
 
     private static Lwjgl3ApplicationConfiguration getDefaultConfiguration() {

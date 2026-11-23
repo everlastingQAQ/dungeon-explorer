@@ -38,7 +38,7 @@ public final class EndRenderer {
 
         bodyFont.setColor(Color.WHITE);
         drawCentered(batch, bodyFont, "新游戏 (N)", height * 0.45f);
-        drawCentered(batch, bodyFont, "返回主菜单 (M / Q)", height * 0.34f);
+        drawCentered(batch, bodyFont, "返回主菜单 (Q)", height * 0.34f);
         batch.end();
     }
 }

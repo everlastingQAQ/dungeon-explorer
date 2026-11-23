@@ -7,6 +7,10 @@ import byow.game.tile.TileRules;
 
 /** 保存单只怪物的位置、类型、行为状态和跨回合数据。 */
 public class Monster {
+    public byow.game.realtime.MonsterActivity activity = new byow.game.realtime.MonsterActivity();
+    public transient float renderAlpha;
+    public float renderX() { return activity.motion == null ? x : activity.motion.x(renderAlpha); }
+    public float renderY() { return activity.motion == null ? y : activity.motion.y(renderAlpha); }
     private final long id;
     private int x;
     private int y;

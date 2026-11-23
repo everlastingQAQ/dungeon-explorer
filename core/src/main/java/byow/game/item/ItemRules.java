@@ -19,8 +19,8 @@ public final class ItemRules {
     /** Shield 提供的伤害抵挡次数。 */
     public static final int SHIELD_CHARGES = 1;
 
-    /** Stun 冻结怪物的回合数。 */
-    public static final int STUN_TURNS = 2;
+    /** Stun 冻结怪物的逻辑 tick 数。 */
+    public static final int STUN_TICKS = byow.game.realtime.Timing.FREEZE;
 
     /**
      * 返回指定遗物对应的完整固定规则。

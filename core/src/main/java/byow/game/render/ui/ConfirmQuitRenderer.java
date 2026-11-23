@@ -50,7 +50,7 @@ public class ConfirmQuitRenderer {
         drawCentered(
             batch,
             bodyFont,
-            "返回游戏 (B)",
+            "返回暂停 (B)",
             height * 0.27f
         );
         batch.end();

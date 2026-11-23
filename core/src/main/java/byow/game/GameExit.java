@@ -17,12 +17,20 @@ public final class GameExit {
 
     private final int x;
     private final int y;
+    private final int width;
     private boolean active;
 
     public GameExit(int x, int y, boolean active) {
+        this(x, y, active, 1);
+    }
+
+    /** Width is a horizontal footprint; the upper sprite half is decorative. */
+    public GameExit(int x, int y, boolean active, int width) {
+        if (width != 1 && width != 2) throw new IllegalArgumentException("Exit width must be one or two");
         this.x = x;
         this.y = y;
         this.active = active;
+        this.width = width;
     }
 
     /**
@@ -77,12 +85,15 @@ public final class GameExit {
 
     /** 让地图地砖与保存的出口状态保持一致。 */
     public void syncTile(TETile[][] world) {
-        world[x][y] = active ? Tileset.OPEN_DOOR : Tileset.CLOSED_DOOR;
+        for (int dx = 0; dx < width; dx++)
+            world[x + dx][y] = active ? Tileset.OPEN_DOOR : Tileset.CLOSED_DOOR;
     }
 
     public boolean contains(int targetX, int targetY) {
-        return x == targetX && y == targetY;
+        return targetX >= x && targetX < x + width && y == targetY;
     }
+
+    public int width() { return width; }
 
     public int x() {
         return x;

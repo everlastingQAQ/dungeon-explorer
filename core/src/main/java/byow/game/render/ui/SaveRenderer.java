@@ -61,7 +61,7 @@ public class SaveRenderer {
         drawCentered(
             batch,
             bodyFont,
-            "返回 (B)",
+            "返回暂停 (B)",
             height * 0.07f
         );
 

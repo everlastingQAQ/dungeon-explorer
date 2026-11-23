@@ -58,7 +58,7 @@ public class GameRenderer {
 
     public void render(Engine engine) {
         switch (engine.state()) {
-            case PLAYING -> {
+            case PLAYING, PAUSE -> {
                 useWorldViewPoint();
                 worldRenderer.render(
                     engine.world(),
@@ -67,7 +67,9 @@ public class GameRenderer {
                     engine.items(),
                     engine.sceneObjects(),
                     engine.exit(),
-                    engine.visible()
+                    engine.visible(),
+                    engine.roomDesigns(),
+                    engine.feedback(), engine.protectionTicks(), engine.freezeTicks()
                 );
 
                 fogRenderer.render(engine.visible(), engine.explored());
@@ -79,7 +81,8 @@ public class GameRenderer {
                     mouseX,
                     mouseY
                 );
-                String hoverDescription = hoveredTile == null
+                String actorDescription = worldRenderer.actorAtScreen(engine, mouseX, mouseY);
+                String hoverDescription = actorDescription != null ? actorDescription : hoveredTile == null
                     ? null
                     : HoverDescriptions.forTile(engine, hoveredTile.x(), hoveredTile.y());
 
@@ -91,7 +94,8 @@ public class GameRenderer {
                     engine.collectedCount(),
                     REQUIRED_ITEM_COUNT,
                     engine.player().shieldCharges(),
-                    engine.frozenMonsterTurns(),
+                    engine.freezeTicks(),
+                    engine.protectionTicks(),
                     engine.visionRadius() - DEFAULT_VISION_RADIUS,
                     engine.radarActive(),
                     engine.radarDirection(),
@@ -99,8 +103,12 @@ public class GameRenderer {
                     hoverDescription,
                     engine.nearbyItem(),
                     mouseX,
-                    mouseY
+                    mouseY,
+                    engine.feedback()
                 );
+                // Pause controls use screen coordinates, after the viewport and
+                // projection have switched from the world camera to the UI.
+                if (engine.state() == byow.game.GameState.PAUSE) pauseRenderer.render();
             }
 
             case MENU -> {
@@ -112,11 +120,6 @@ public class GameRenderer {
                 useFullViewport();
                 useUiCamera();
                 seedRenderer.render(engine.seedString());
-            }
-            case PAUSE -> {
-                useFullViewport();
-                useUiCamera();
-                pauseRenderer.render();
             }
             case SAVE -> {
                 useFullViewport();
@@ -178,6 +181,11 @@ public class GameRenderer {
 
         int worldHeight = height - HUD_HEIGHT;
         worldRenderer.resize(width, worldHeight);
+    }
+
+    /** Releases resources owned by the composed renderers. */
+    public void dispose() {
+        worldRenderer.dispose();
     }
 
     // =====================

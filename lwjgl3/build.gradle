@@ -61,6 +61,23 @@ run {
   if (os.contains('mac')) jvmArgs += "-XstartOnFirstThread"
 }
 
+// Render regression fixtures with the real GPU renderer; no user save is loaded or written.
+tasks.register('wallRenderCheck', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'byow.game.render.world.WallRenderCheck'
+  workingDir = rootProject.file('assets')
+  jvmArgs += '--enable-native-access=ALL-UNNAMED'
+}
+
+tasks.register('roomRenderCheck', JavaExec) {
+  dependsOn testClasses
+  classpath = sourceSets.test.runtimeClasspath
+  mainClass = 'byow.game.render.world.RoomRenderCheck'
+  workingDir = rootProject.file('assets')
+  jvmArgs += '--enable-native-access=ALL-UNNAMED'
+}
+
 jar {
 // sets the name of the .jar file this produces to the name of the game or app, with the version after.
   archiveFileName.set("${appName}-${projectVersion}.jar")
@@ -207,4 +224,40 @@ tasks.withType(JavaExec.class).configureEach {
 
 if(enableGraalNative == 'true') {
   apply from: file("nativeimage.gradle")
+}
+
+// Real-time motion, fog and hover acceptance through the actual game renderer.
+tasks.register('realtimeRenderCheck', JavaExec) {
+  dependsOn testClasses, ':core:testClasses'
+  classpath = sourceSets.test.runtimeClasspath + project(':core').sourceSets.test.output
+  mainClass = 'byow.game.render.world.RealtimeRenderCheck'
+  workingDir = rootProject.file('assets')
+  jvmArgs += '--enable-native-access=ALL-UNNAMED'
+}
+sourceSets.test.compileClasspath += project(':core').sourceSets.test.output
+tasks.named('compileTestJava') { dependsOn ':core:testClasses' }
+
+tasks.register('pauseRenderCheck', JavaExec) {
+  dependsOn testClasses, ':core:testClasses'
+  classpath = sourceSets.test.runtimeClasspath + project(':core').sourceSets.test.output
+  mainClass = 'byow.game.render.world.RealtimeRenderCheck'
+  args '--pause-only'
+  workingDir = rootProject.file('assets')
+  jvmArgs += '--enable-native-access=ALL-UNNAMED'
+}
+
+tasks.register('doorRenderCheck', JavaExec) {
+  dependsOn testClasses, ':core:testClasses'
+  classpath = sourceSets.test.runtimeClasspath + project(':core').sourceSets.test.output
+  mainClass = 'byow.game.render.world.DoorRenderCheck'
+  workingDir = rootProject.file('assets')
+  jvmArgs += '--enable-native-access=ALL-UNNAMED'
+}
+
+tasks.register('feedbackRenderCheck', JavaExec) {
+  dependsOn testClasses, ':core:testClasses'
+  classpath = sourceSets.test.runtimeClasspath + project(':core').sourceSets.test.output
+  mainClass = 'byow.game.render.world.FeedbackRenderCheck'
+  workingDir = rootProject.file('assets')
+  jvmArgs += '--enable-native-access=ALL-UNNAMED'
 }

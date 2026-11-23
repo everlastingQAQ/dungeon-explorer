@@ -65,6 +65,9 @@ public class TileConverter {
         return switch (type) {
             case AVATAR -> Tileset.AVATAR;
             case WALL -> Tileset.WALL;
+            case PILLAR -> Tileset.PILLAR;
+            case FURNITURE -> Tileset.FURNITURE;
+            case TALL_FURNITURE -> Tileset.TALL_FURNITURE;
             case FLOOR -> Tileset.FLOOR;
             case NOTHING -> Tileset.NOTHING;
             case GRASS -> Tileset.GRASS;
@@ -77,6 +80,9 @@ public class TileConverter {
             case CRACKED_FLOOR -> Tileset.CRACKED_FLOOR;
             case MUD -> Tileset.MUD;
             case PEBBLES -> Tileset.PEBBLES;
+            case WORN_FLOOR -> Tileset.WORN_FLOOR;
+            case STAINED_FLOOR -> Tileset.STAINED_FLOOR;
+            case CHIPPED_FLOOR -> Tileset.CHIPPED_FLOOR;
             case MOUNTAIN -> Tileset.MOUNTAIN;
             case TREE -> Tileset.TREE;
             case ROCK -> Tileset.ROCK;

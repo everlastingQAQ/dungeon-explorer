@@ -1,6 +1,7 @@
 package byow.game.render.ui;
 
 import byow.game.item.Item;
+import byow.game.feedback.GameFeedback;
 import byow.game.monster.MonsterType;
 import byow.game.render.FontManager;
 import com.badlogic.gdx.Gdx;
@@ -61,6 +62,7 @@ public class HudRenderer {
         int targetCount,
         int shieldCharges,
         int frozenMonsterTurns,
+        int protectionTicks,
         int visionBonus,
         boolean radarActive,
         String radarDirection,
@@ -68,7 +70,8 @@ public class HudRenderer {
         String hoverDescription,
         Item nearbyItem,
         int mouseX,
-        int mouseY
+        int mouseY,
+        GameFeedback feedback
     ) {
         float width = Gdx.graphics.getWidth();
         float height = Gdx.graphics.getHeight();
@@ -84,6 +87,8 @@ public class HudRenderer {
             );
 
         drawBackground(width, height);
+        drawFeedback(feedback, width, height);
+        drawHealthPips(currentHp, maxHp, height);
         drawHoverBackground(hover);
         drawText(
             width,
@@ -94,12 +99,49 @@ public class HudRenderer {
             targetCount,
             shieldCharges,
             frozenMonsterTurns,
+            protectionTicks,
             visionBonus,
             radarActive,
             radarDirection,
             info,
-            hover
+            hover,
+            feedback
         );
+    }
+
+    /** Separate bounded channels: a pickup cannot erase the exit-unlocked notice. */
+    private void drawFeedback(GameFeedback feedback, float width, float height) {
+        float boxWidth = Math.max(48, Math.min(680, width - 48));
+        float x = (width - boxWidth) / 2;
+        // Reserve the first line below the HUD for the pause controls.
+        float top = height - HUD_HEIGHT - 58;
+        for (var notice : feedback.notices()) {
+            Color accent = notice.channel() == GameFeedback.Channel.EXIT ? Color.GOLD : ITEM_ACCENT;
+            layout.setText(messageFont, notice.text(), accent, boxWidth - 24,
+                com.badlogic.gdx.utils.Align.left, true);
+            float boxHeight = layout.height + 20;
+            shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+            shapeRenderer.setColor(HUD_BACKGROUND);
+            shapeRenderer.rect(x, top - boxHeight, boxWidth, boxHeight);
+            shapeRenderer.setColor(accent);
+            shapeRenderer.rect(x, top - boxHeight, 3, boxHeight);
+            shapeRenderer.end();
+            batch.begin();
+            messageFont.setColor(accent);
+            messageFont.draw(batch, notice.text(), x + 12, top - 10, boxWidth - 24,
+                com.badlogic.gdx.utils.Align.left, true);
+            batch.end();
+            top -= boxHeight + 8;
+        }
+    }
+
+    private void drawHealthPips(int currentHp, int maxHp, float height) {
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        for (int i = 0; i < maxHp; i++) {
+            shapeRenderer.setColor(i < currentHp ? MONSTER_ACCENT : Color.DARK_GRAY);
+            shapeRenderer.rect(HORIZONTAL_PADDING + i * 22, height - HUD_HEIGHT + 8, 18, 4);
+        }
+        shapeRenderer.end();
     }
 
     private HoverLayout createHoverLayout(
@@ -109,7 +151,9 @@ public class HudRenderer {
         int mouseY,
         InfoContent content
     ) {
-        layout.setText(messageFont, content.text());
+        float availableWidth = Math.max(48, screenWidth - TOOLTIP_PADDING * 2f - 16f);
+        layout.setText(messageFont, content.text(), content.accent(),
+            availableWidth, com.badlogic.gdx.utils.Align.left, true);
         float boxWidth = layout.width + TOOLTIP_PADDING * 2f;
         float boxHeight = layout.height + TOOLTIP_PADDING * 2f;
         float worldTop = screenHeight - HUD_HEIGHT;
@@ -153,33 +197,49 @@ public class HudRenderer {
         int targetCount,
         int shieldCharges,
         int frozenMonsterTurns,
+        int protectionTicks,
         int visionBonus,
         boolean radarActive,
         String radarDirection,
         InfoContent info,
-        HoverLayout hover
+        HoverLayout hover,
+        GameFeedback feedback
     ) {
         String hpText = "生命  " + currentHp + " / " + maxHp;
         String itemText = "遗物  " + collectedCount + " / " + targetCount;
         String statusText = createStatusText(
             shieldCharges,
             frozenMonsterTurns,
+            protectionTicks,
             visionBonus,
             radarActive,
             radarDirection
         );
 
         batch.begin();
-        bodyFont.setColor(Color.WHITE);
+        bodyFont.setColor(feedback.impact() == GameFeedback.Impact.DAMAGE ? MONSTER_ACCENT : Color.WHITE);
         layout.setText(bodyFont, hpText);
         float textY = height - HUD_HEIGHT + (HUD_HEIGHT + layout.height) / 2;
         bodyFont.draw(batch, hpText, HORIZONTAL_PADDING, textY);
 
         bodyFont.setColor(STATUS_COLOR);
-        layout.setText(bodyFont, statusText);
-        bodyFont.draw(batch, statusText, (width - layout.width) / 2f, textY);
+        // Keep the status block between HP and relic counters even with all buffs.
+        float statusWidth = Math.max(96, width - 400);
+        float scaleX = bodyFont.getData().scaleX, scaleY = bodyFont.getData().scaleY;
+        layout.setText(bodyFont, statusText, STATUS_COLOR, statusWidth,
+            com.badlogic.gdx.utils.Align.center, true);
+        if (layout.height > HUD_HEIGHT - 16) {
+            // Native 12px fallback, never a fractional pixel-font size.
+            bodyFont.getData().setScale(.5f);
+            layout.setText(bodyFont, statusText, STATUS_COLOR, statusWidth,
+                com.badlogic.gdx.utils.Align.center, true);
+        }
+        bodyFont.draw(batch, statusText, (width - statusWidth) / 2f,
+            height - HUD_HEIGHT + (HUD_HEIGHT + layout.height) / 2,
+            statusWidth, com.badlogic.gdx.utils.Align.center, true);
+        bodyFont.getData().setScale(scaleX, scaleY);
 
-        bodyFont.setColor(collectedCount > targetCount ? Color.RED : Color.WHITE);
+        bodyFont.setColor(collectedCount >= targetCount ? Color.GOLD : Color.WHITE);
         layout.setText(bodyFont, itemText);
         bodyFont.draw(batch, itemText, width - HORIZONTAL_PADDING - layout.width, textY);
 
@@ -206,13 +266,17 @@ public class HudRenderer {
             batch,
             hover.content().text(),
             hover.x() + TOOLTIP_PADDING,
-            hover.y() + TOOLTIP_PADDING + hover.textHeight()
+            hover.y() + TOOLTIP_PADDING + hover.textHeight(),
+            hover.width() - TOOLTIP_PADDING * 2f,
+            com.badlogic.gdx.utils.Align.left,
+            true
         );
     }
 
     private static String createStatusText(
         int shieldCharges,
         int frozenMonsterTurns,
+        int protectionTicks,
         int visionBonus,
         boolean radarActive,
         String radarDirection
@@ -222,8 +286,9 @@ public class HudRenderer {
             states.add("护盾 x" + shieldCharges);
         }
         if (frozenMonsterTurns > 0) {
-            states.add("冻结 " + frozenMonsterTurns + " 回合");
+            states.add("冻结 " + HoverDescriptions.seconds(frozenMonsterTurns) + " 秒");
         }
+        if (protectionTicks > 0) states.add("保护 " + HoverDescriptions.seconds(protectionTicks) + " 秒");
         if (visionBonus > 0) {
             states.add("视野 +" + visionBonus);
         }
@@ -261,7 +326,7 @@ public class HudRenderer {
     private static String monsterDescription(MonsterType type) {
         return switch (type) {
             case HUNTER ->
-                "发现猎手：会锁定你的位置 2 回合并通过广度优先寻路追踪。";
+                "发现猎手：会锁定你的位置 两次决策并通过广度优先寻路追踪。";
             case AMBUSHER ->
                 "发现伏击者：会预测你移动方向前方最多 3 格。";
             case GUARDIAN ->

@@ -75,7 +75,8 @@ public final class MonsterSpawner {
                 if (!TileRules.isWalkable(world[x][y])) {
                     continue;
                 }
-                if (player.x() == x && player.y() == y) {
+                if (player.x() == x && player.y() == y
+                    || player.motion != null && player.motion.targets(x, y)) {
                     continue;
                 }
                 if (isOccupied(monsters, x, y)) {
@@ -102,7 +103,8 @@ public final class MonsterSpawner {
     /** 判断指定位置是否已经被怪物占据。 */
     private static boolean isOccupied(List<Monster> monsters, int x, int y) {
         for (Monster monster : monsters) {
-            if (monster.x() == x && monster.y() == y) {
+            if (monster.x() == x && monster.y() == y
+                || monster.activity.motion != null && monster.activity.motion.targets(x, y)) {
                 return true;
             }
         }

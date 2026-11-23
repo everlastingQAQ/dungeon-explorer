@@ -42,7 +42,8 @@ class MonsterBehaviorTest {
         Monster second = new Monster(2, 2, 1, MonsterType.HUNTER);
         Player player = new Player(world, 4, 2);
 
-        new MonsterController().takeTurn(world, List.of(first, second), player);
+        var engine = byow.game.realtime.EngineFixture.create(world, player, List.of(first, second));
+        byow.game.realtime.EngineFixture.ticks(engine, 13);
 
         assertEquals(2, first.x());
         assertEquals(2, first.y());
@@ -59,7 +60,8 @@ class MonsterBehaviorTest {
         Monster leader = new Monster(2, 2, 2, MonsterType.HUNTER);
         Player player = new Player(world, 4, 2);
 
-        new MonsterController().takeTurn(world, List.of(follower, leader), player);
+        var engine = byow.game.realtime.EngineFixture.create(world, player, List.of(follower, leader));
+        byow.game.realtime.EngineFixture.ticks(engine, 13);
 
         assertEquals(1, follower.x());
         assertEquals(3, leader.x());
@@ -98,12 +100,13 @@ class MonsterBehaviorTest {
         Monster hunter = new Monster(1, 1, 2, MonsterType.HUNTER);
         Player player = new Player(world, 2, 2);
 
-        MonsterTurnResult result = new MonsterController()
-            .takeTurn(world, List.of(hunter), player);
+        var engine = byow.game.realtime.EngineFixture.create(world, player, List.of(hunter));
+        byow.game.realtime.EngineFixture.ticks(engine, 1);
 
         assertEquals(1, hunter.x());
         assertEquals(2, hunter.y());
-        assertEquals(List.of(hunter), result.contacts());
+        assertEquals(2, player.currentHp());
+        assertEquals(60, hunter.activity.attackTicks);
     }
 
     private static TETile[][] openWorld(int width, int height) {

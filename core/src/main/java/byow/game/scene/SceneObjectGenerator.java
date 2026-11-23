@@ -6,11 +6,12 @@ import byow.game.player.Player;
 import byow.game.random.GameRandom;
 import byow.game.tile.TETile;
 import byow.game.tile.TileRules;
+import byow.game.worldGenerator.RoomDesign;
 
 import java.util.ArrayList;
 import java.util.List;
 
-/** 在不覆盖玩家、遗物或出口的位置生成场景物件。 */
+/** 仅在房间内生成场景物件，不覆盖玩家、遗物或出口。 */
 public final class SceneObjectGenerator {
     private static final int TRAP_COUNT = 3;
     private static final int MIN_PORTAL_DISTANCE = 25;
@@ -20,12 +21,13 @@ public final class SceneObjectGenerator {
         Player player,
         List<Item> items,
         GameExit exit,
-        GameRandom random
+        GameRandom random,
+        List<RoomDesign> rooms
     ) {
-        List<Position> available = collectAvailable(world, player, items, exit);
+        List<Position> available = collectAvailable(world, player, items, exit, rooms);
         int required = TRAP_COUNT + 4;
         if (available.size() < required) {
-            throw new IllegalStateException("Not enough space for scene objects");
+            throw new IllegalStateException("Not enough room floor space for scene objects");
         }
 
         List<SceneObject> result = new ArrayList<>();
@@ -59,7 +61,8 @@ public final class SceneObjectGenerator {
         TETile[][] world,
         Player player,
         List<Item> items,
-        GameExit exit
+        GameExit exit,
+        List<RoomDesign> rooms
     ) {
         List<Position> positions = new ArrayList<>();
         for (int x = 1; x < world.length - 1; x++) {
@@ -70,7 +73,12 @@ public final class SceneObjectGenerator {
                     || hasItemAt(items, x, y)) {
                     continue;
                 }
-                positions.add(new Position(x, y));
+                for (RoomDesign room : rooms) {
+                    if (room.contains(x, y)) {
+                        positions.add(new Position(x, y));
+                        break;
+                    }
+                }
             }
         }
         return positions;

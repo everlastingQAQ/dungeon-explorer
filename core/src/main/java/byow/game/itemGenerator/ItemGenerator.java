@@ -6,71 +6,40 @@ import byow.game.player.Player;
 import byow.game.random.GameRandom;
 import byow.game.tile.TETile;
 import byow.game.tile.TileRules;
-
+import byow.game.worldGenerator.RoomDesign;
 import java.util.ArrayList;
 import java.util.List;
+import static byow.game.GameConfig.ITEM_NUMBER;
 
-import static byow.game.GameConfig.*;
-
+/** Relics are sampled without replacement from eligible room floors only. */
 public class ItemGenerator {
-
-    /**
-     * 随机生成生成ITEM_NUMBER个物品
-     *
-     * @param world 传入游戏世界
-     * @param player 传入用户位置
-     * @param gameRandom 传入随机数
-     * @return 返回物品数组
-     */
-    public static List<Item> generate(TETile[][] world, Player player, GameRandom gameRandom) {
-        List<Item> items = new ArrayList<>();
-
-        // 之后进行不放回随机抽取
-        List<ItemType> availableTypes = new ArrayList<>(List.of(ItemType.values()));
-
-        while (items.size() < ITEM_NUMBER) {
-            int x = gameRandom.nextInt(1, WORLD_WIDTH);
-            int y = gameRandom.nextInt(1, WORLD_HEIGHT);
-
-            // 如果是用户位置, 不允许放置
-            if (player.x() == x && player.y() == y) {
-                continue;
+    public static List<Item> generate(TETile[][] world, Player player,
+                                      GameRandom random, List<RoomDesign> rooms) {
+        List<Position> available = new ArrayList<>();
+        for (int x = 1; x < world.length - 1; x++) {
+            for (int y = 1; y < world[x].length - 1; y++) {
+                if (player.x() == x && player.y() == y
+                    || !TileRules.canHostItem(world[x][y])) continue;
+                for (RoomDesign room : rooms) {
+                    if (room.contains(x, y)) {
+                        available.add(new Position(x, y));
+                        break;
+                    }
+                }
             }
-
-            // 允许普通地面和纯视觉装饰地面承载遗物。
-            if (!TileRules.canHostItem(world[x][y])) {
-                continue;
-            }
-
-            // 如果这个位置已经有过物品了, 不允许放置
-            if (hasItemAt(items, x, y)) {
-                continue;
-            }
-
-            // 取得枚举数组
-            ItemType[] types = ItemType.values();
-
-            // 确定随机类型
-            int index = gameRandom.nextInt(availableTypes.size());
-
-            // 建立新Item
-            ItemType type = availableTypes.remove(index);
-            Item newItem = new Item(x, y, type);
-
-            // 加入数组
-            items.add(newItem);
         }
+        if (available.size() < ITEM_NUMBER)
+            throw new IllegalStateException("Not enough room floor space for relics");
 
+        List<ItemType> types = new ArrayList<>(List.of(ItemType.values()));
+        List<Item> items = new ArrayList<>();
+        for (int i = 0; i < ITEM_NUMBER; i++) {
+            Position position = available.remove(random.nextInt(available.size()));
+            ItemType type = types.remove(random.nextInt(types.size()));
+            items.add(new Item(position.x(), position.y(), type));
+        }
         return items;
     }
 
-    // 判断在某个位置是否有物品
-    private static boolean hasItemAt(List<Item> items, int x, int y) {
-        for (Item item : items) {
-            if (item.x() == x && item.y() == y) {
-                return true;
-            }
-        }
-        return false;
-    }
+    private record Position(int x, int y) {}
 }

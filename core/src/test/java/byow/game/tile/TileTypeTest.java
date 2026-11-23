@@ -27,7 +27,10 @@ class TileTypeTest {
             TileType.MOSS,
             TileType.CRACKED_FLOOR,
             TileType.MUD,
-            TileType.PEBBLES
+            TileType.PEBBLES,
+            TileType.WORN_FLOOR,
+            TileType.STAINED_FLOOR,
+            TileType.CHIPPED_FLOOR
         }) {
             assertTrue(type.isWalkable());
             assertTrue(type.isTransparent());

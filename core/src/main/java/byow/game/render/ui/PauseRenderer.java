@@ -5,57 +5,24 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
-
 import static byow.game.render.RenderUtils.drawCentered;
 
+/** Keep the frozen world and hover descriptions visible for inspection. */
 public class PauseRenderer {
-
     private final SpriteBatch batch;
-    private final BitmapFont titleFont;
-    private final BitmapFont bodyFont;
-
+    private final BitmapFont font;
     public PauseRenderer(SpriteBatch batch, FontManager fonts) {
         this.batch = batch;
-        this.titleFont = fonts.title();
-        this.bodyFont = fonts.body();
+        this.font = fonts.body();
     }
-
     public void render() {
-        float height = Gdx.graphics.getHeight();
-
+        float y = Gdx.graphics.getHeight() - byow.game.GameConfig.HUD_HEIGHT - 18;
+        String text = "游戏暂停 · 继续 (P)   保存 (S)   返回主菜单 (Q)";
         batch.begin();
-
-        titleFont.setColor(Color.WHITE);
-        drawCentered(
-            batch,
-            titleFont,
-            "游戏暂停",
-            height * 0.75f
-        );
-
-        bodyFont.setColor(Color.WHITE);
-        drawCentered(
-            batch,
-            bodyFont,
-            "继续游戏 (P)",
-            height * 0.52f
-        );
-
-        drawCentered(
-            batch,
-            bodyFont,
-            "保存游戏 (S)",
-            height * 0.43f
-        );
-
-        drawCentered(
-            batch,
-            bodyFont,
-            "返回主菜单 (Q)",
-            height * 0.34f
-        );
-
+        font.setColor(Color.BLACK);
+        drawCentered(batch, font, text, y - 2);
+        font.setColor(Color.WHITE);
+        drawCentered(batch, font, text, y);
         batch.end();
     }
-
 }

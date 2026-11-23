@@ -18,6 +18,16 @@ import static byow.game.GameConfig.PLAYER_MAX_HP;
  */
 
 public class Player {
+    public byow.game.realtime.Motion motion;
+    public transient float renderAlpha;
+    public float renderX() { return motion == null ? x : motion.x(renderAlpha); }
+    public float renderY() { return motion == null ? y : motion.y(renderAlpha); }
+    public void arrive(byow.game.realtime.Motion step) {
+        x = step.toX(); y = step.toY();
+        lastMoveDx = step.toX() - step.fromX();
+        lastMoveDy = step.toY() - step.fromY();
+        motion = null;
+    }
     private int x;
     private int y;
 

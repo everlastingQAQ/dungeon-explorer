@@ -18,6 +18,7 @@ public class ByowGame extends ApplicationAdapter {
 
     private GameRenderer gameRenderer;
     private Engine engine;
+    private GameInputProcessor input;
 
     @Override
     public void create() {
@@ -27,7 +28,8 @@ public class ByowGame extends ApplicationAdapter {
         engine = new Engine();
         gameRenderer = new GameRenderer(batch, fonts, shapeRenderer, GameConfig.getTileSize());
 
-        Gdx.input.setInputProcessor(new GameInputProcessor(engine));
+        input = new GameInputProcessor(engine);
+        Gdx.input.setInputProcessor(input);
     }
 
     @Override
@@ -38,12 +40,21 @@ public class ByowGame extends ApplicationAdapter {
             return;
         }
 
+        engine.update(Gdx.graphics.getDeltaTime());
         ScreenUtils.clear(0, 0, 0, 1);
         gameRenderer.render(engine);
     }
 
+    @Override public void pause() { focusLost(); }
+
+    public void focusLost() {
+        if (engine != null) engine.focusLost();
+        if (input != null) input.clear();
+    }
+
     @Override
     public void dispose() {
+        gameRenderer.dispose();
         batch.dispose();
         fonts.dispose();
         shapeRenderer.dispose();

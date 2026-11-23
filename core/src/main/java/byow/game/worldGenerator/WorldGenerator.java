@@ -14,7 +14,7 @@ import java.util.List;
  * 负责生成完整的游戏世界。
  *
  * <p>地图生成依次经过房间生成、迷宫生成、区域连接、
- * 死胡同移除、多余墙壁清理以及可通行地块装饰这几个阶段。
+ * 死胡同移除、外墙重建、房间主题与室内布局这几个阶段。
  * 对于相同的随机种子，生成的地图应当保持一致。</p>
  *
  * <p>通过 {@link #generate(long)} 方法生成地图。</p>
@@ -24,6 +24,10 @@ import java.util.List;
 public class WorldGenerator {
 
     public static TETile[][] generate(long seed) {
+        return generateDesigned(seed).terrain();
+    }
+
+    public static GeneratedWorld generateDesigned(long seed) {
 
         GameRandom random = new GameRandom(seed);
         TETile[][] world = new TETile[WORLD_WIDTH][WORLD_HEIGHT];
@@ -49,16 +53,10 @@ public class WorldGenerator {
         DeadEndRemover deadEndRemover = new DeadEndRemover(world, rooms);
         deadEndRemover.removeDeadEnd();
 
-        // 去除多余墙壁
-        removeWall(world);
+        // 地图拓扑完成后丢弃生成过程中的旧墙，按最终地面统一重建。
+        WallGenerator.rebuild(world);
 
-        // 使用独立随机流生成纯视觉地块，避免改变地图拓扑和其他随机序列。
-        DecorationGenerator.decorate(
-            world,
-            new GameRandom(seed ^ 0x6A09E667F3BCC909L)
-        );
-
-        return world;
+        return new GeneratedWorld(world, RoomStyler.style(world, rooms, seed));
     }
 
     /**
@@ -72,59 +70,6 @@ public class WorldGenerator {
                 world[i][j] = Tileset.WALL;
             }
         }
-    }
-
-    /**
-     * 删除地图中不再包围有效区域的多余墙壁。
-     *
-     * <p>遍历所有格子，通过 {@link #needDelete(TETile[][], int, int)}
-     * 判断墙壁是否仍然靠近地板或连接点。
-     * 不再需要的墙壁会被替换为 {@link Tileset#NOTHING}。</p>
-     *
-     * @param world 当前地图
-     */
-    private static void removeWall(TETile[][] world) {
-        for (int i = 0; i < world.length; i++) {
-            for (int j = 0; j < world[0].length; j++) {
-                if (needDelete(world, i, j)) {
-                    world[i][j] = Tileset.NOTHING;
-                }
-            }
-        }
-    }
-
-    /**
-     * 判断指定位置的墙壁是否可以删除。
-     *
-     * <p>只有当前位置为墙壁，并且其周围 3 × 3 范围内
-     * 不存在地板或连接点时，该墙壁才被认为是多余的。</p>
-     *
-     * @param world 当前地图
-     * @param x     要检查位置的横坐标
-     * @param y     要检查位置的纵坐标
-     * @return 如果该墙壁可以删除则返回 {@code true}，
-     *         否则返回 {@code false}
-     */
-    private static boolean needDelete(TETile[][] world, int x, int y) {
-        if (!world[x][y].equals(Tileset.WALL)) {
-            return false;
-        }
-
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dy = -1; dy <= 1; dy++) {
-                int nx = x + dx;
-                int ny = y + dy;
-                if (nx < 0 || nx >= world.length || ny < 0 || ny >= world[0].length) {
-                    continue;
-                }
-                if (world[nx][ny].equals(Tileset.FLOOR)
-                    || world[nx][ny].equals(Tileset.OPEN_DOOR)) {
-                    return false;
-                }
-            }
-        }
-
-        return true;
     }
 
     /**

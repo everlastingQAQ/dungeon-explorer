@@ -6,6 +6,7 @@ import byow.game.random.GameRandom;
 import byow.game.tile.TETile;
 import byow.game.tile.TileRules;
 import byow.game.tile.Tileset;
+import byow.game.worldGenerator.*;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;
@@ -23,7 +24,8 @@ class SceneObjectGeneratorTest {
         GameExit exit = GameExit.place(world, player);
 
         List<SceneObject> objects = SceneObjectGenerator.generate(
-            world, player, List.of(), exit, new GameRandom(1234)
+            world, player, List.of(), exit, new GameRandom(1234),
+            List.of(new RoomDesign(new Room(1, 1, 48, 33), RoomTheme.STONE, 0, List.of()))
         );
 
         assertEquals(7, objects.size());
@@ -60,6 +62,8 @@ class SceneObjectGeneratorTest {
                 world[x][y] = border ? Tileset.WALL : Tileset.FLOOR;
             }
         }
+        // 出口必须落在地图内部的墙上，不能只提供最外一圈边界墙。
+        world[width - 2][height - 2] = Tileset.WALL;
         return world;
     }
 }

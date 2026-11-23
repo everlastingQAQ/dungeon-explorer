@@ -15,7 +15,7 @@ import com.badlogic.gdx.graphics.g2d.GlyphLayout;
  * - tileSize 板块像素
  * 2. 行为
  * - drawBackground(TETile tile, int x, int y) 画板块背景
- * - drawCharacter(TETile tile, int x, int y) 画板块字符
+ * - drawCharacter(TETile tile, float x, float y) 画板块字符
  * - toGdxColor 将板块的颜色转化成绘画颜色
  */
 public class TileRenderer {
@@ -25,6 +25,7 @@ public class TileRenderer {
     private final ShapeRenderer shapeRenderer;
 
     private final float tileSize;
+    private final WorldSprites sprites;
 
     private final GlyphLayout layout = new GlyphLayout();
 
@@ -43,6 +44,7 @@ public class TileRenderer {
         this.tileFont = font;
         this.shapeRenderer = shapeRenderer;
         this.tileSize = tileSize;
+        this.sprites = new WorldSprites();
     }
 
     /**
@@ -68,10 +70,58 @@ public class TileRenderer {
      * @param x 传入板块横坐标
      * @param y 传入板块纵坐标
      */
-    public void drawCharacter(TETile tile, int x, int y) {
+    public void drawCharacter(TETile tile, float x, float y) {
+        draw(tile, x, y, sprites.get(tile));
+    }
+
+    /** Tint only this actor; restore shared batch state before any later draw. */
+    public void drawCharacter(TETile tile, float x, float y, com.badlogic.gdx.graphics.Color tint) {
+        var sprite = sprites.get(tile);
+        if (sprite == null) { drawCharacter(tile, x, y); return; }
+        float previous = batch.getPackedColor();
+        batch.setColor(tint);
+        batch.draw(sprite.region(), x * tileSize, y * tileSize, tileSize, tileSize * sprite.aspectRatio());
+        batch.setPackedColor(previous);
+    }
+
+    /** A two-cell door uses the complete 32x32 source at native 16px-grid scale. */
+    public void drawDoor(byow.game.door.DoorLayout.Door door) {
+        var sprite = sprites.get(door.appearance());
+        batch.setColor(com.badlogic.gdx.graphics.Color.WHITE);
+        float width = door.width() * tileSize;
+        batch.draw(sprite.region(), door.x() * tileSize, door.y() * tileSize,
+            width, width * sprite.aspectRatio());
+    }
+
+    /** Draws terrain with access to neighboring cells for wall autotiling. */
+    public void drawTerrain(TETile[][] world, int x, int y) {
+        draw(world[x][y], x, y, sprites.getTerrain(world, x, y));
+    }
+
+    private void draw(TETile tile, float x, float y, WorldSprites.SpriteFrame sprite) {
         // 描述该在哪里画
         float px = x * tileSize;
         float py = y * tileSize;
+
+        if (sprite != null) {
+            batch.setColor(com.badlogic.gdx.graphics.Color.WHITE);
+            float spriteHeight = tileSize * sprite.aspectRatio();
+            batch.draw(
+                sprite.region(),
+                px,
+                py,
+                tileSize,
+                spriteHeight
+            );
+            return;
+        }
+
+        // The common floor is intentionally a plain color block. Its old
+        // middle-dot glyph made large rooms visually noisy once sprites were
+        // introduced; rarer floor variants still keep their own markings.
+        if ("floor".equals(tile.description())) {
+            return;
+        }
 
         // 设定颜色
         tileFont.setColor(toGdxColor(tile.textColor()));
@@ -90,6 +140,16 @@ public class TileRenderer {
 
         // 通过 draw(batch, 字符, 字符开始绘画横坐标, 字符baseline纵坐标)
         tileFont.draw(batch, text, textX, textY);
+    }
+
+    public float characterHeight(TETile tile) {
+        var frame = sprites.get(tile);
+        return frame == null ? 1 : frame.aspectRatio();
+    }
+
+    /** Releases all textures owned by this renderer. */
+    public void dispose() {
+        sprites.dispose();
     }
 
     // 将TETile的颜色转化成BitmapFont的颜色单位

@@ -23,6 +23,9 @@ public final class TileRules {
             || type == TileType.MOSS
             || type == TileType.CRACKED_FLOOR
             || type == TileType.MUD
-            || type == TileType.PEBBLES;
+            || type == TileType.PEBBLES
+            || type == TileType.WORN_FLOOR
+            || type == TileType.STAINED_FLOOR
+            || type == TileType.CHIPPED_FLOOR;
     }
 }
